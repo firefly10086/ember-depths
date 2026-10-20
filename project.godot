@@ -13,7 +13,13 @@ window/size/viewport_width=1280
 window/size/viewport_height=800
 window/size/window_width_override=1280
 window/size/window_height_override=800
+window/size/mode=2
 window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+window/dpi/allow_hidpi=true
+
+[gui]
+fonts/dynamic_fonts/use_oversampling=true
 
 [rendering]
 renderer/rendering_method="gl_compatibility"

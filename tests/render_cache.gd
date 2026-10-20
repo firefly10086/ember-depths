@@ -29,7 +29,7 @@ func run() -> void:
 	verify(hud.cache_builds == builds, "Static menu does not rebuild HUD")
 	verify(room.static_builds == room_builds, "Room static cache does not rebuild per frame")
 	verify(room.static_viewport.world_2d != root.world_2d, "Room cache has an isolated canvas")
-	verify(hud.cache_viewport.world_2d != root.world_2d, "HUD cache has an isolated canvas")
+	verify(hud.cache_layer.get_viewport() == root, "HUD retains commands on the native window canvas")
 	room.set_locked(true)
 	await settle()
 	verify(room.static_builds == room_builds + 1, "Door state invalidates the static cache once")
@@ -70,10 +70,10 @@ func run() -> void:
 	game.mode = "paused"
 	await settle()
 	if DisplayServer.get_name() != "headless":
-		await benchmark(room, hud, "paused")
+		await benchmark(room, "paused")
 		game.mode = "playing"
 		await settle()
-		await benchmark(room, hud, "idle_play")
+		await benchmark(room, "idle_play")
 	game.queue_free()
 	await settle()
 	if failures.is_empty():
@@ -89,27 +89,21 @@ func render_info() -> Dictionary:
 		"draw_calls": root.get_render_info(Viewport.RENDER_INFO_TYPE_CANVAS, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME),
 	}
 
-func benchmark(room: DungeonRoom, hud: Control, scenario: String) -> void:
+func benchmark(room: DungeonRoom, scenario: String) -> void:
 	await settle()
 	await RenderingServer.frame_post_draw
 	var cached := render_info()
-	# Replay the exact static draw routines directly, bypassing only their textures.
+	# Replay the room's static draw routine, keeping native-resolution HUD text.
 	# This gives a reproducible same-scene geometry comparison, not a GPU power claim.
 	room.cached_sprite.hide()
-	hud.cached_image.hide()
 	var room_direct := DungeonRoom.RoomLayer.new()
 	room_direct.room = room
 	room_direct.static_content = true
 	room.add_child(room_direct)
-	var hud_direct = hud.CachedLayer.new()
-	hud_direct.hud = hud
-	hud.add_child(hud_direct)
 	await settle()
 	await RenderingServer.frame_post_draw
 	var direct := render_info()
 	print("RENDER ", scenario, " cached=", cached, " direct_static_geometry=", direct)
 	verify(cached.primitives < direct.primitives, "Cached textures reduce submitted primitives")
 	room_direct.queue_free()
-	hud_direct.queue_free()
 	room.cached_sprite.show()
-	hud.cached_image.show()

@@ -1,8 +1,11 @@
 extends Control
-## Fixed design canvas, scaled by Godot's canvas_items window stretch.
+## Retain drawing commands and render text directly into the native window.
+
+const DESIGN_SIZE := Vector2i(1280, 800)
+const MIN_FONT_SIZE := 13
 
 const INK := Color("d9e1d7")
-const MUTED := Color("778e91")
+const MUTED := Color("9eafb4")
 const GOLD := Color("dfb879")
 const TEAL := Color("8ec8b7")
 const PANEL := Color("0d1921")
@@ -13,7 +16,6 @@ var font: SystemFont
 var display_font: SystemFont
 var hover := -1
 var styles: Dictionary = {}
-var cache_viewport: SubViewport
 var cache_layer: CachedLayer
 var painter: Node2D
 var dirty := true
@@ -22,7 +24,6 @@ var displayed_elapsed := 0.0
 var time_accumulator := 0.0
 var portal_near := false
 var button_hot := false
-var cached_image: TextureRect
 var last_mode := ""
 const ROOM_NAMES := {"entrance": "入口", "combat": "战斗", "treasure": "宝箱", "cursed": "诅咒", "shop": "商店", "boss": "守门者"}
 
@@ -36,27 +37,20 @@ func invalidate() -> void:
 	dirty = true
 
 func _setup_cache() -> void:
-	cache_viewport = SubViewport.new()
-	cache_viewport.size = Vector2i(1280, 800)
-	cache_viewport.transparent_bg = true
-	cache_viewport.world_2d = World2D.new()
-	cache_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
-	add_child(cache_viewport)
+	# CanvasItem retains draw commands between invalidations. Text stays on the
+	# window canvas, avoiding a bitmap size limit and a second filtering pass.
 	cache_layer = CachedLayer.new()
 	cache_layer.hud = self
-	cache_viewport.add_child(cache_layer)
-	cached_image = TextureRect.new()
-	cached_image.texture = cache_viewport.get_texture()
-	cached_image.size = Vector2(1280, 800)
-	cached_image.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	cached_image.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	add_child(cached_image)
+	cache_layer.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	add_child(cache_layer)
 	var feedback := preload("res://scripts/hud_feedback.gd").new()
 	feedback.hud = self
 	add_child(feedback)
 	var cursor := preload("res://scripts/hud_cursor.gd").new()
 	cursor.hud = self
 	add_child(cursor)
+	get_viewport().size_changed.connect(invalidate)
+
 var card_rects: Array[Rect2] = [Rect2(174, 294, 294, 282), Rect2(493, 294, 294, 282), Rect2(812, 294, 294, 282)]
 var start_rect := Rect2(500, 537, 280, 60)
 
@@ -64,6 +58,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	font = SystemFont.new()
 	font.font_names = PackedStringArray(["Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Arial"])
+	font.hinting = TextServer.HINTING_NORMAL
 	font.fallbacks = [preload("res://assets/fonts/ZCOOLKuaiLe-Regular.ttf")]
 	display_font = SystemFont.new()
 	display_font.font_names = PackedStringArray(["Georgia", "Times New Roman"])
@@ -107,11 +102,11 @@ func _process(delta: float) -> void:
 		dirty = false
 		cache_builds += 1
 		cache_layer.queue_redraw()
-		cache_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		var p := get_global_mouse_position()
+		var local_event := make_input_local(event) as InputEventMouseButton
+		var p := local_event.position
 		if game.mode == "reward":
 			if game.in_shop():
 				if Rect2(1060, 184, 178, 46).has_point(p):
@@ -150,7 +145,7 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 func label(at: Vector2, value: String, size: int = 16, color: Color = INK, width: float = -1, align: int = HORIZONTAL_ALIGNMENT_LEFT) -> void:
-	painter.draw_string(font, at, value, align, width, size, color)
+	painter.draw_string(font, at, value, align, width, maxi(size, MIN_FONT_SIZE), color)
 
 func center(at: Vector2, value: String, size: int = 16, color: Color = INK, width: float = 1280) -> void:
 	label(Vector2(0, at.y), value, size, color, width, HORIZONTAL_ALIGNMENT_CENTER)
@@ -331,9 +326,9 @@ func _draw_footer() -> void:
 	var x := 46.0
 	for pair in controls:
 		label(Vector2(x, 766), pair[0], 12, INK)
-		var length: float = font.get_string_size(pair[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+		var length: float = font.get_string_size(pair[0], HORIZONTAL_ALIGNMENT_LEFT, -1, MIN_FONT_SIZE).x
 		label(Vector2(x + length + 10, 766), pair[1], 11, MUTED)
-		x += length + font.get_string_size(pair[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x + 43
+		x += length + font.get_string_size(pair[1], HORIZONTAL_ALIGNMENT_LEFT, -1, MIN_FONT_SIZE).x + 43
 	label(Vector2(1092, 766), "M  声音：%s" % ("关闭" if game.muted else "开启"), 11, MUTED, 144, HORIZONTAL_ALIGNMENT_RIGHT)
 
 func _overlay() -> void:

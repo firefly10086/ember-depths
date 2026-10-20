@@ -33,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           godot --headless --editor --path . --import
-          for suite in smoke input_smoke expansion render_cache campaign mechanics combat_balance skills pacing_economy; do
+          for suite in smoke input_smoke expansion render_cache display_scaling campaign mechanics combat_balance skills pacing_economy; do
             godot --headless --path . --script "tests/$suite.gd"
           done
       - name: Export single-threaded browser build
